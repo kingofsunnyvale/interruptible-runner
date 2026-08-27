@@ -1,0 +1,40 @@
+{"ts": 1787855549.988, "type": "controller.started", "state": "IDLE"}
+{"ts": 1787855557.92, "type": "webhook.rejected", "reason": "bad_signature"}
+{"ts": 1787855577.752, "type": "webhook.rejected", "reason": "bad_signature"}
+{"ts": 1787855578.261, "type": "webhook.rejected", "reason": "bad_signature"}
+{"ts": 1787855591.896, "type": "webhook.rejected", "reason": "bad_signature"}
+{"ts": 1787855611.27, "type": "controller.started", "state": "IDLE"}
+{"ts": 1787855619.252, "type": "webhook.received", "event_id": "9f966be9b3ae4d27bbde8aeb686ed2d7", "notif_type": "webhook_test", "attempt": "1", "vast_ts": 1787855618.848062, "subject": "Vast.ai webhook test", "message": "This is a test event triggered from the Vast.ai webhook console."}
+{"ts": 1787855688.766, "type": "launch.created", "instance_id": 48926820, "machine_id": 101502, "bid": 0.031, "min_bid": 0.02666666666666667, "on_demand_dph": 0.0634, "gpu_name": "RTX 4060", "payload": "noop"}
+{"ts": 1787855818.407, "type": "webhook.received", "event_id": "c3dbc58e1e8649cd9d4e02a58b75bbec", "notif_type": "outbid", "attempt": "1", "vast_ts": 1787855818.034952, "subject": "Your Interruptible Instance #48926820 Has Been Outbid", "message": "Your interruptible instance 48926820 on machine 101502 has been outbid and will be stopped. Your bid was $0.03/hr and the current minimum bid is $0.06/hr. Update your bid at https://cloud.vast.ai/instances/ to keep it running."}
+{"ts": 1787856021.263, "type": "launch.created", "instance_id": 48927380, "machine_id": 46110, "bid": 0.031, "min_bid": 0.02666667, "on_demand_dph": 0.8069, "gpu_name": "RTX 2080 Ti", "payload": "noop"}
+{"ts": 1787856425.789, "type": "webhook.received", "event_id": "92384b684fd84d21b7e6e7466df758d3", "notif_type": "instance_started", "attempt": "1", "vast_ts": 1787856425.4126976, "subject": "Your Vast.ai Instance #48927380 Is Now Running", "message": "Your instance 48927380 running vastai/pytorch:2.6.0-cuda-12.6.3-py312 on machine 46110 has started. You are being charged $0.031/hr. View it at: https://console.vast.ai/instances/"}
+{"ts": 1787856629.868, "type": "launch.ready", "instance_id": 48927380, "cold_start_secs": 403.0, "note": "recovered manually after scp-key fix"}
+{"ts": 1787856646.501, "type": "poll.status", "actual": "running", "intended": "running", "min_bid": 0.02666667, "state": "LAUNCHING", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856646.501, "type": "state.change", "frm": "LAUNCHING", "to": "RUNNING"}
+{"ts": 1787856684.915, "type": "controller.started", "state": "LAUNCHING"}
+{"ts": 1787856695.586, "type": "poll.status", "actual": "running", "intended": "running", "min_bid": 0.02666667, "state": "LAUNCHING", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856695.586, "type": "state.change", "frm": "LAUNCHING", "to": "RUNNING"}
+{"ts": 1787856699.767, "type": "worker.progress", "images_done": 97, "total": 100, "boot_count": 1, "avg_s": 1.0}
+{"ts": 1787856714.818, "type": "worker.progress", "images_done": 100, "total": 100, "boot_count": 1, "avg_s": 1.0}
+{"ts": 1787856714.819, "type": "done", "images": 100}
+{"ts": 1787856714.819, "type": "state.change", "frm": "RUNNING", "to": "DONE"}
+{"ts": 1787856720.244, "type": "kill.initiated", "lever": "bid-drop", "state": "DONE"}
+{"ts": 1787856720.915, "type": "kill.lever_done", "lever": "bid-drop", "ok": false, "detail": "^^^^^^^^^^^\n  File \"/opt/homebrew/Cellar/python@3.13/3.13.10/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/decoder.py\", line 363, in raw_decode\n    raise JSONDecodeError(\"Expecting value\", s, err.value) from None\njson.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)"}
+{"ts": 1787856721.561, "type": "poll.status", "actual": "running", "intended": "stopped", "min_bid": 0.02666667, "state": "DONE", "forced": true, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856732.192, "type": "poll.status", "actual": "exited", "intended": "stopped", "min_bid": 0.02666667, "state": "DONE", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856732.193, "type": "state.change", "frm": "DONE", "to": "DEAD", "actual": "exited"}
+{"ts": 1787856784.074, "type": "probe.rebid_test", "note": "raise bid to 0.031, NO explicit start"}
+{"ts": 1787856805.183, "type": "probe.rebid_test2", "note": "bid 0.040 > new floor 0.0376, still NO explicit start"}
+{"ts": 1787856835.026, "type": "probe.start_test", "note": "explicit start instance on exited container"}
+{"ts": 1787856838.531, "type": "poll.status", "actual": "exited", "intended": "running", "min_bid": 0.047, "state": "DEAD", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856881.007, "type": "poll.status", "actual": "running", "intended": "running", "min_bid": 0.02666667, "state": "DEAD", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856965.028, "type": "od.rented", "instance_id": 48928752, "dph": 0.8069444444444444}
+{"ts": 1787856965.448, "type": "webhook.received", "event_id": "9ac801f6b7c5400b90e77e4befbb9ac7", "notif_type": "outbid", "attempt": "1", "vast_ts": 1787856964.9573286, "subject": "Your Interruptible Instance #48927380 Has Been Outbid", "message": "Your interruptible instance 48927380 on machine 46110 has been outbid and will be stopped. Your bid was $0.03/hr and the current minimum bid is $0.80/hr. Update your bid at https://cloud.vast.ai/instances/ to keep it running."}
+{"ts": 1787856966.054, "type": "poll.status", "actual": "running", "intended": "stopped", "min_bid": 0.02666667, "state": "DEAD", "forced": true, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787856997.961, "type": "poll.status", "actual": "exited", "intended": "stopped", "min_bid": 0.02666667, "state": "DEAD", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787857004.662, "type": "od.destroyed", "instance_id": 48928752}
+{"ts": 1787857008.597, "type": "poll.status", "actual": "exited", "intended": "running", "min_bid": 0.02666667, "state": "DEAD", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787857019.225, "type": "poll.status", "actual": "running", "intended": "running", "min_bid": 0.02666667, "state": "DEAD", "forced": false, "status_msg": "success, running vastai/pytorch_2.6.0-cuda-12.6.3-py312/ssh"}
+{"ts": 1787857070.381, "type": "teardown.destroyed", "instance_id": 48927380}
+{"ts": 1787857072.344, "type": "poll.status", "actual": null, "intended": null, "min_bid": null, "state": "DEAD", "forced": false, "status_msg": ""}
