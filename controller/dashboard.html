@@ -127,16 +127,17 @@ async function refresh() {
     }
   } catch (err) { /* controller restarting; keep trying */ }
 }
-function renderGallery(w) {
-  if (!w.recent) return;
+async function renderGallery(w) {
   if (w.payload === "qlora") { $("galtitle").textContent = "loss curve"; return renderSpark(); }
-  const seen = new Set([...$("gallery").querySelectorAll("img")].map(i => i.dataset.n));
-  for (const name of w.recent) {
-    if (seen.has(name)) continue;
-    const img = document.createElement("img");
-    img.src = "/thumbs/" + name; img.dataset.n = name; img.title = name;
-    $("gallery").prepend(img);
+  // Render from the local mirror's full listing — w.recent is only the last
+  // 12 names, so building the gallery from it drops older images on reload.
+  const names = await (await fetch("/api/thumbs")).json();
+  const gallery = $("gallery");
+  if (gallery.childElementCount !== names.length) {
+    gallery.innerHTML = names.slice().reverse().map(n =>
+      `<img src="/thumbs/${n}" data-n="${n}" title="${n}">`).join("");
   }
+  $("galtitle").textContent = `gallery (${names.length})`;
 }
 async function renderSpark() {
   try {

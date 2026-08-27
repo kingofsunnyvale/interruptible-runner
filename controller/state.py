@@ -231,6 +231,18 @@ class Controller(threading.Thread):
                 self.attempts = 0
             self._to("RUNNING")
 
+        elif s == "STARVED":
+            # A start issued while the GPU is held gets "state change queued",
+            # but the scheduler can also knock intended back to stopped — so
+            # keep a start request warm every couple of minutes.
+            if now - getattr(self, "last_starved_start", 0) > 120:
+                self.last_starved_start = now
+                try:
+                    vast.start_instance(self.job["instance_id"])
+                    events.emit("starved.start_retry", ok=True)
+                except Exception as e:
+                    events.emit("starved.start_retry", ok=False, error=str(e)[:200])
+
         elif s in ("RUNNING", "DONE", "LAUNCHING") and actual in INTERRUPTED_STATES:
             # Measured outbid signature: intended_status flips to "stopped"
             # within seconds, then actual goes "exited" (~30 s). We record

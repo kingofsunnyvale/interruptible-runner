@@ -22,6 +22,18 @@ def scp(host, port, remote, local):
     return r.returncode == 0
 
 
+def list_remote_thumbs(host, port):
+    """The real inventory. status.json's `recent` is a 12-item display hint —
+    treating it as the pull list loses every thumb that scrolls past the
+    window during a pull gap (kill, resume, restart, network drop)."""
+    r = subprocess.run(["ssh", "-p", str(port)] + vast.ssh_opts() +
+                       ["root@%s" % host, "ls /root/job/thumbs 2>/dev/null"],
+                       capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        return []
+    return [n for n in r.stdout.split() if n.endswith(".webp")]
+
+
 def pull_once(job):
     host, port = job.get("ssh_host"), job.get("ssh_port")
     if not host:
@@ -34,10 +46,13 @@ def pull_once(job):
         status = json.loads((PULLED / "status.json").read_text())
     except ValueError:
         return None
-    for name in status.get("recent", []):
-        name = Path(name).name
-        if not (THUMBS / name).exists():
-            scp(host, port, "/root/job/thumbs/" + name, THUMBS / name)
+    missing = [n for n in list_remote_thumbs(host, port)
+               if not (THUMBS / Path(n).name).exists()]
+    if missing:  # batch scp, capped per cycle to keep a pull bounded
+        batch = ["root@%s:/root/job/thumbs/%s" % (host, n) for n in missing[:40]]
+        subprocess.run(["scp", "-P", str(port)] + vast.ssh_opts() +
+                       batch + [str(THUMBS)],
+                       capture_output=True, text=True, timeout=120)
     if job.get("payload") == "qlora":
         scp(host, port, "/root/job/loss.csv", PULLED / "loss.csv")
     return status

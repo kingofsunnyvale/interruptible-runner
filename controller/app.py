@@ -104,6 +104,9 @@ class LocalHandler(BaseHTTPRequestHandler):
             if "since=" in self.path:
                 since = float(self.path.split("since=")[1].split("&")[0])
             self._json(events.read(since)[-400:])
+        elif self.path.startswith("/api/thumbs"):
+            names = sorted(f.name for f in THUMBS.glob("*.webp")) if THUMBS.exists() else []
+            self._json(names)
         elif self.path.startswith("/api/loss"):
             f = ROOT / "run" / "pulled" / "loss.csv"
             pts = []
