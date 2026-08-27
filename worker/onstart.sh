@@ -2,7 +2,9 @@
 # Vast re-runs /root/onstart.sh on EVERY container start — including the
 # auto-resume after an outbid — so everything here must be idempotent.
 date -u +%s >> /root/boots.log            # line count == boot count (proof onstart re-ran)
-env >> /etc/environment                   # make -e vars visible in ssh sessions (Vast FAQ recipe)
+# make -e vars visible in ssh sessions (Vast FAQ recipe, filtered: raw `env`
+# can contain exported bash functions that corrupt /etc/environment)
+env | grep -E '^[A-Za-z_][A-Za-z0-9_]*=' | grep -v '^BASH_FUNC' >> /etc/environment
 mkdir -p /root/job
 export HF_HOME=/root/job/hf               # model weights on instance disk -> survive the pause
 echo "HF_HOME=/root/job/hf" >> /etc/environment

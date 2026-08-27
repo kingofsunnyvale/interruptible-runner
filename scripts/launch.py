@@ -26,10 +26,6 @@ QUERIES = {
              "reliability>0.98 inet_down>200 disk_space>40"),
     "cheap": "num_gpus=1 gpu_frac=1 rentable=true reliability>0.98 inet_down>100",
 }
-SSH_OPTS = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR"]
-
-
 def record_created(iid, **fields):
     RUN.mkdir(exist_ok=True)
     with CREATED.open("a") as f:
@@ -60,27 +56,36 @@ def main():
     offers = [o for o in offers if o.get("min_bid")]
     if not offers:
         sys.exit("no interruptible offers matched")
-    offer = offers[0]
-    machine, gpus = offer["machine_id"], offer.get("num_gpus", 1)
-    min_bid = offer["min_bid"]
-    bid = round(min_bid * 1.15, 3)
-    od = on_demand_price(machine, gpus)
-    # offer storage_cost is $/GB/month -> convert to $/hr for our disk size
     disk = 40 if args.payload in ("sdxl", "qlora") else 12
-    storage_dph = round((offer.get("storage_cost") or 0.15) * disk / 730, 5)
-    print("offer %s machine %s %s: min_bid $%.3f -> bidding $%.3f (on-demand $%s)"
-          % (offer["id"], machine, offer.get("gpu_name"), min_bid, bid, od))
-
     env = load_env()
     envstr = "-e PAYLOAD=%s -e N_IMAGES=%s -e STEPS=%s" % (
         args.payload, env.get("N_IMAGES", "100"), env.get("STEPS", "25"))
-    created = vast.cli("create", "instance", str(offer["id"]),
-                       "--image", IMAGE, "--disk", str(disk),
-                       "--bid_price", str(bid), "--ssh", "--direct",
-                       "--onstart", str(ROOT / "worker" / "onstart.sh"),
-                       "--env", envstr, "--label", "ir-" + args.payload,
-                       "--cancel-unavail")
-    iid = created["new_contract"]  # the instance id lives here, not in "id"
+
+    # Cheap offers churn fast (410 no_such_ask is routine) and the CLI reports
+    # such errors as JSON with exit code 0 — walk down the list until one takes.
+    iid = None
+    for offer in offers[:6]:
+        machine, gpus = offer["machine_id"], offer.get("num_gpus", 1)
+        min_bid = offer["min_bid"]
+        bid = round(min_bid * 1.15, 3)
+        print("offer %s machine %s %s: min_bid $%.3f -> bidding $%.3f"
+              % (offer["id"], machine, offer.get("gpu_name"), min_bid, bid))
+        created = vast.cli("create", "instance", str(offer["id"]),
+                           "--image", IMAGE, "--disk", str(disk),
+                           "--bid_price", str(bid), "--ssh", "--direct",
+                           "--onstart", str(ROOT / "worker" / "onstart.sh"),
+                           "--env", envstr, "--label", "ir-" + args.payload,
+                           "--cancel-unavail")
+        if created and created.get("new_contract"):  # id lives here, not in "id"
+            iid = created["new_contract"]
+            break
+        print("  offer gone (%s) — trying next" % (created or {}).get("msg", "no response"))
+    if not iid:
+        sys.exit("all candidate offers refused — rerun")
+    od = on_demand_price(machine, gpus)
+    # offer storage_cost is $/GB/month -> convert to $/hr for our disk size
+    storage_dph = round((offer.get("storage_cost") or 0.15) * disk / 730, 5)
+    print("created %s on machine %s (on-demand there: $%s/hr)" % (iid, machine, od))
     record_created(iid, purpose=args.payload, machine_id=machine, offer_id=offer["id"], bid=bid)
     t0 = time.time()
     events.emit("launch.created", instance_id=iid, machine_id=machine, bid=bid,
@@ -103,11 +108,11 @@ def main():
         sys.exit("timed out waiting for running (instance %s left up — inspect or teardown)" % iid)
 
     cold = round(time.time() - t0, 1)
-    host, port = inst.get("ssh_host"), inst.get("ssh_port")
+    host, port = vast.ssh_target(inst)
     payload_file = "train_qlora.py" if args.payload == "qlora" else "render_sdxl.py"
     r = None
     for _ in range(10):  # sshd may lag a few seconds behind "running"
-        r = subprocess.run(["scp", "-P", str(port)] + SSH_OPTS +
+        r = subprocess.run(["scp", "-P", str(port)] + vast.ssh_opts() +
                            [str(ROOT / "worker" / payload_file),
                             "root@%s:/root/job/job.py" % host],
                            capture_output=True, text=True)

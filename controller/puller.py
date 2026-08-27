@@ -8,18 +8,15 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import events
+from . import events, vast
 
 ROOT = Path(__file__).resolve().parent.parent
 PULLED = ROOT / "run" / "pulled"
 THUMBS = PULLED / "thumbs"
 
-SSH_OPTS = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR"]
-
 
 def scp(host, port, remote, local):
-    r = subprocess.run(["scp", "-P", str(port)] + SSH_OPTS +
+    r = subprocess.run(["scp", "-P", str(port)] + vast.ssh_opts() +
                        ["root@%s:%s" % (host, remote), str(local)],
                        capture_output=True, text=True, timeout=30)
     return r.returncode == 0

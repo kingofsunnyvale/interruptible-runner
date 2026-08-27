@@ -25,7 +25,12 @@ ROOT = Path(__file__).resolve().parent.parent
 RUN = ROOT / "run"
 STATE_FILE = RUN / "state.json"
 
-TERMINAL = ("exited", "unknown", "offline")  # the documented poll trap; "stopped" is NOT terminal
+# Probe finding (2026-08-27): an outbid manifests as actual_status "exited" —
+# and it IS recoverable (explicit start, or autonomous resume when the
+# preempting tenant leaves). The docs' poll trap ("exited never returns to
+# running") is wrong for interruptibles. Only these two are treated as dead:
+TERMINAL = ("unknown", "offline")
+INTERRUPTED_STATES = ("stopped", "exited")
 
 
 def load_env():
@@ -191,6 +196,10 @@ class Controller(threading.Thread):
 
         if min_bid is not None:
             self.job["last_min_bid"] = min_bid
+        # dph_base is the authoritative live bid (probe: bare change-bid can
+        # move it without us knowing) — keep our record in sync.
+        if inst.get("dph_base") is not None:
+            self.job["bid"] = inst["dph_base"]
         triple = (actual, intended)
         if triple != self.prev_triple:
             events.emit("poll.status", actual=actual, intended=intended,
@@ -205,17 +214,19 @@ class Controller(threading.Thread):
             self._to("DEAD", actual=actual)
             return
 
-        if s in ("LAUNCHING", "STARVED") and actual == "running":
-            if s == "STARVED":
-                events.emit("resume.detected", frm="starved", attempts=self.attempts)
+        if s in ("LAUNCHING", "STARVED", "DEAD") and actual == "running":
+            if s != "LAUNCHING":
+                events.emit("resume.detected", frm=s.lower(), attempts=self.attempts)
                 self.attempts = 0
             self._to("RUNNING")
 
-        elif s in ("RUNNING", "DONE") and actual == "stopped":
-            # outbid signature per docs inference: stopped while we intended running.
-            # We record `intended` rather than gate on it — the signature is undocumented.
+        elif s in ("RUNNING", "DONE", "LAUNCHING") and actual in INTERRUPTED_STATES:
+            # Measured outbid signature: intended_status flips to "stopped"
+            # within seconds, then actual goes "exited" (~30 s). We record
+            # `intended` but don't gate on it.
             events.emit("interruption.detected",
-                        source="webhook" if forced else "poll", intended=intended)
+                        source="webhook" if forced else "poll",
+                        actual=actual, intended=intended)
             self.attempts = 0
             self.start_fallback_used = False
             self._to("INTERRUPTED")
@@ -236,6 +247,9 @@ class Controller(threading.Thread):
                 self._to("RUNNING")
                 return
             waited = now - self.rebid_wait_since
+            # Probe: after a self-bid-drop, rebidding alone did NOT revive the
+            # exited container — an explicit start did. After an od tenant
+            # left, resume was autonomous. The fallback covers the first case.
             if waited > self.start_fallback_secs and not self.start_fallback_used:
                 self.start_fallback_used = True
                 try:
@@ -244,11 +258,15 @@ class Controller(threading.Thread):
                 except Exception as e:
                     events.emit("rebid.start_fallback", ok=False, error=str(e)[:200])
             elif waited > self.starved_after_secs:
-                if min_bid and (self.job.get("bid") or 0) < min_bid:
+                # Probe: instance min_bid tracks OUR OWN bid x1.2 (a raise
+                # increment), so `bid < min_bid` is always true after our own
+                # rebid — chasing it would spiral to the ceiling. Only treat
+                # the market as moved when min_bid clears the x1.2 self-echo.
+                if min_bid and min_bid > (self.job.get("bid") or 0) * 1.3:
                     events.emit("rebid.outbid_again", min_bid=min_bid)
                     self._to("INTERRUPTED")
-                else:  # our bid clears the floor yet we're still stopped: an
-                    # on-demand tenant holds the GPU and no bid can beat that.
+                else:  # a higher-priority tenant still holds the GPU;
+                    # bidding cannot help until they leave.
                     events.emit("starvation.detected", min_bid=min_bid,
                                 bid=self.job.get("bid"))
                     self._to("STARVED")
