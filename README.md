@@ -12,8 +12,10 @@ webhook), or drop your own bid (a silent kill only the poller catches).
 
 ## Measured (RTX 4090, machine 31129, 2026-08-27)
 
-- **$0.144/hr bid vs $0.321/hr on-demand on the same machine — 55% saved.**
-  Exact per-instance charges: `make receipt`.
+- **Launch bid $0.144/hr vs $0.321/hr on-demand on the same machine (55%
+  below).** Auto-rebids after each kill stepped later stretches to
+  $0.164–0.22/hr, for a **blended ~$0.17/hr — about 47% saved** over the
+  actual running time. Exact per-instance charges: `make receipt`.
 - Kill → outbid webhook on the laptop: **2.8 s** (it arrives *before* the
   container stops). Kill → poller confirmation: 14.1 s. Kill → new bid
   accepted: **14.6 s**.
