@@ -1,0 +1,169 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>interruptible-runner</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e;
+          --green:#3fb950; --red:#f85149; --amber:#d29922; --blue:#58a6ff; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--fg);
+         font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; padding:16px; }
+  h1 { font-size:16px; margin-bottom:12px; }
+  .grid { display:grid; grid-template-columns: 340px 1fr; gap:12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:12px; font-weight:bold; }
+  .RUNNING{background:#12351c;color:var(--green)} .INTERRUPTED,.DEAD,.EXHAUSTED{background:#3d1214;color:var(--red)}
+  .REBID_WAIT,.CEILING_WAIT,.LAUNCHING{background:#3a2b0a;color:var(--amber)}
+  .STARVED{background:#341a4d;color:#c297ff} .DONE,.IDLE{background:#1a2f45;color:var(--blue)}
+  table { width:100%; border-collapse:collapse; }
+  td { padding:2px 4px; } td:first-child { color:var(--dim); }
+  #timeline { max-height:420px; overflow-y:auto; margin-top:8px; }
+  .ev { padding:3px 6px; border-left:3px solid var(--line); margin-bottom:3px; }
+  .ev b { color:var(--blue); }
+  .ev.webhook { border-color:var(--green); } .ev.kill { border-color:var(--red); }
+  .ev.rebid { border-color:var(--amber); } .ev.resume { border-color:var(--green); }
+  .ev .t { color:var(--dim); margin-right:6px; }
+  .chip { background:#12351c; color:var(--green); border-radius:10px; padding:0 8px; margin-left:6px; }
+  #gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:6px; margin-top:8px; }
+  #gallery img { width:100%; border-radius:4px; }
+  .divider { grid-column:1/-1; color:var(--amber); border-top:1px dashed var(--amber); padding-top:2px; }
+  button { background:var(--red); color:#fff; border:0; border-radius:6px;
+           padding:10px 14px; font:inherit; font-weight:bold; cursor:pointer; width:100%; margin-top:10px; }
+  button:disabled { opacity:.4 } select,input { background:var(--bg); color:var(--fg);
+           border:1px solid var(--line); border-radius:4px; padding:4px; font:inherit; }
+  .cost b { font-size:18px; } .save { color:var(--green); font-weight:bold; }
+  svg polyline { fill:none; stroke:var(--blue); stroke-width:1.5; }
+</style>
+</head>
+<body>
+<h1>interruptible-runner
+  <span id="state" class="badge IDLE">IDLE</span>
+  <span id="inst" style="color:var(--dim)"></span></h1>
+<div class="grid">
+  <div>
+    <div class="card">
+      <table>
+        <tr><td>our bid</td><td id="bid">–</td></tr>
+        <tr><td>machine floor (min_bid)</td><td id="minbid">–</td></tr>
+        <tr><td>our ceiling</td><td id="ceiling">–</td></tr>
+        <tr><td>on-demand price</td><td id="od">–</td></tr>
+        <tr><td>status triple</td><td id="triple">–</td></tr>
+        <tr><td>progress</td><td id="progress">–</td></tr>
+        <tr><td>boot count</td><td id="boots">–</td></tr>
+        <tr><td>avg s / image</td><td id="avg">–</td></tr>
+      </table>
+      <select id="lever"><option value="bid-drop">lever: drop own bid</option>
+        <option value="od-rent">lever: on-demand self-rent</option></select>
+      <button id="kill" onclick="kill()">PULL THE PLUG</button>
+    </div>
+    <div class="card cost" style="margin-top:12px">
+      <table>
+        <tr><td>paid (est.)</td><td><b id="paid">–</b></td></tr>
+        <tr><td>&nbsp;&nbsp;gpu / storage</td><td id="split">–</td></tr>
+        <tr><td>on-demand would be</td><td id="odcost">–</td></tr>
+        <tr><td>saved</td><td class="save" id="saved">–</td></tr>
+      </table>
+    </div>
+  </div>
+  <div>
+    <div class="card"><b>timeline</b><div id="timeline"></div></div>
+    <div class="card" style="margin-top:12px"><b id="galtitle">gallery</b>
+      <div id="gallery"></div><div id="spark"></div></div>
+  </div>
+</div>
+<script>
+let lastTs = 0, evs = [], killTs = null;
+const $ = id => document.getElementById(id);
+const fmt$ = v => v == null ? "–" : "$" + v.toFixed(3);
+const t = ts => new Date(ts * 1000).toLocaleTimeString();
+
+function cls(e) {
+  if (e.type.startsWith("webhook")) return "webhook";
+  if (e.type.startsWith("kill")) return "kill";
+  if (e.type.startsWith("rebid") || e.type.startsWith("ceiling")) return "rebid";
+  if (e.type.startsWith("resume")) return "resume";
+  return "";
+}
+function chip(e) {  // latency chips measured against the last kill.initiated
+  if (e.type === "kill.initiated") { killTs = e.ts; return ""; }
+  if (killTs && ["webhook.received","interruption.detected","rebid.response","resume.detected"].includes(e.type)) {
+    return `<span class="chip">+${(e.ts - killTs).toFixed(1)}s</span>`;
+  }
+  return "";
+}
+function detail(e) {
+  const skip = ["ts","type","vast_ts","subject","message"];
+  return Object.entries(e).filter(([k]) => !skip.includes(k))
+    .map(([k,v]) => `${k}=${JSON.stringify(v)}`).join(" ");
+}
+async function refresh() {
+  try {
+    const s = await (await fetch("/api/status")).json();
+    $("state").textContent = s.state; $("state").className = "badge " + s.state;
+    $("inst").textContent = s.instance_id ? `#${s.instance_id} (${s.payload || ""})` : "";
+    $("bid").textContent = fmt$(s.bid) + "/hr";
+    $("minbid").textContent = fmt$(s.min_bid) + "/hr";
+    $("ceiling").textContent = fmt$(s.ceiling) + "/hr";
+    $("od").textContent = fmt$(s.on_demand_dph) + "/hr";
+    $("triple").textContent = s.triple ? s.triple.join(" / ") : "–";
+    const w = s.worker || {};
+    $("progress").textContent = w.images_done != null ? `${w.images_done} / ${w.total}` : "–";
+    $("boots").textContent = w.boot_count ?? "–";
+    $("avg").textContent = w.avg_s_per_image ? w.avg_s_per_image.toFixed(1) : "–";
+    const c = s.cost || {};
+    $("paid").textContent = fmt$(c.total);
+    $("split").textContent = `${fmt$(c.gpu)} / ${fmt$(c.storage)}`;
+    $("odcost").textContent = fmt$(c.od);
+    $("saved").textContent = c.saved_pct != null ? `${fmt$(c.saved)} (${c.saved_pct}%)` : "–";
+    renderGallery(w);
+    const fresh = await (await fetch("/api/events?since=" + lastTs)).json();
+    if (fresh.length) {
+      evs = evs.concat(fresh); lastTs = evs[evs.length - 1].ts;
+      evs.filter(e => e.type === "kill.initiated").forEach(e => killTs = e.ts);
+      $("timeline").innerHTML = evs.slice(-120).reverse().map(e =>
+        `<div class="ev ${cls(e)}"><span class="t">${t(e.ts)}</span><b>${e.type}</b>${chip(e)} ${detail(e)}</div>`
+      ).join("");
+    }
+  } catch (err) { /* controller restarting; keep trying */ }
+}
+function renderGallery(w) {
+  if (!w.recent) return;
+  if (w.payload === "qlora") { $("galtitle").textContent = "loss curve"; return renderSpark(); }
+  const seen = new Set([...$("gallery").querySelectorAll("img")].map(i => i.dataset.n));
+  for (const name of w.recent) {
+    if (seen.has(name)) continue;
+    const img = document.createElement("img");
+    img.src = "/thumbs/" + name; img.dataset.n = name; img.title = name;
+    $("gallery").prepend(img);
+  }
+}
+async function renderSpark() {
+  try {
+    const pts = await (await fetch("/api/loss")).json(); // [{step,loss,boot_count}]
+    if (!pts.length) return;
+    const W = 600, H = 120, losses = pts.map(p => p.loss);
+    const mn = Math.min(...losses), mx = Math.max(...losses);
+    const x = i => i / (pts.length - 1 || 1) * W;
+    const y = v => H - 8 - (v - mn) / (mx - mn || 1) * (H - 16);
+    let polys = [], cur = [], boot = pts[0].boot_count, marks = [];
+    pts.forEach((p, i) => {   // break the line + red marker at each restart
+      if (p.boot_count !== boot) { polys.push(cur); cur = []; boot = p.boot_count; marks.push(x(i)); }
+      cur.push(`${x(i)},${y(p.loss)}`);
+    });
+    polys.push(cur);
+    $("spark").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%">` +
+      marks.map(m => `<line x1="${m}" y1="0" x2="${m}" y2="${H}" stroke="#f85149" stroke-dasharray="3"/>`).join("") +
+      polys.map(p => `<polyline points="${p.join(" ")}"/>`).join("") + `</svg>`;
+  } catch { }
+}
+async function kill() {
+  $("kill").disabled = true;
+  const lever = $("lever").value;
+  await fetch("/api/control/interrupt", { method: "POST", body: JSON.stringify({ lever }) });
+  setTimeout(() => $("kill").disabled = false, 5000);
+}
+setInterval(refresh, 2000); refresh();
+</script>
+</body>
+</html>
