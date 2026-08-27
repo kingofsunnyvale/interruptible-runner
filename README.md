@@ -1,15 +1,12 @@
 # interruptible-runner
 
-Long jobs on Vast.ai's cheapest tier — interruptible instances — killed on
-purpose, resumed with zero lost work, receipts included.
+Running long jobs on Vast.ai's cheapest tier: interruptible instances.
 
 **The demo:** an SDXL batch render runs on an interruptible RTX 4090. We
 deliberately trigger our own interruption live; Vast's outbid webhook wakes a
 laptop-side controller, which re-raises the bid under a cost ceiling; Vast
 auto-resumes the container on the same machine; the render continues at image
-N+1. A QLoRA fine-tune (payload 2) proves the same chassis holds when resume
-actually requires checkpoint discipline: the loss curve continues across the
-kill.
+N+1.
 
 ## Architecture
 
@@ -42,7 +39,6 @@ writes only.
 | Kill → resumed | TBD | events.jsonl (L5) |
 | Resume → first new image | TBD | timings.jsonl |
 | SDXL throughput | TBD | status.json |
-| QLoRA tokens/sec, loss continuity | TBD | loss.csv |
 | Total spend, whole project | TBD | RECEIPT.md |
 
 ## What the docs don't tell you
