@@ -67,7 +67,9 @@ def main():
     for offer in offers[:6]:
         machine, gpus = offer["machine_id"], offer.get("num_gpus", 1)
         min_bid = offer["min_bid"]
-        bid = round(min_bid * 1.15, 3)
+        # BID_MULT: 1.15 rides cheap; ~1.35 is more defensible against other
+        # interruptible bidders during a demo window (nothing beats on-demand).
+        bid = round(min_bid * float(env.get("BID_MULT") or 1.15), 3)
         print("offer %s machine %s %s: min_bid $%.3f -> bidding $%.3f"
               % (offer["id"], machine, offer.get("gpu_name"), min_bid, bid))
         created = vast.cli("create", "instance", str(offer["id"]),

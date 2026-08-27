@@ -78,14 +78,24 @@ class Controller(threading.Thread):
 
     def _load_job(self):
         if STATE_FILE.exists():
-            self.job = json.loads(STATE_FILE.read_text())
-            self.job.setdefault("cost", {"gpu": 0.0, "storage": 0.0, "od": 0.0})
-            if self.state == "IDLE" and self.job.get("instance_id"):
-                self.state = "LAUNCHING"  # settles to the real state on first poll
+            self._job_mtime = STATE_FILE.stat().st_mtime
+            new = json.loads(STATE_FILE.read_text())
+            if new.get("instance_id") != self.job.get("instance_id"):
+                # a (re)launch happened — adopt the new instance from scratch
+                self.job = new
+                self.job.setdefault("cost", {"gpu": 0.0, "storage": 0.0, "od": 0.0})
+                self.state = "LAUNCHING" if new.get("instance_id") else "IDLE"
+                self.prev_triple = None
+                self.attempts = 0
+
+    def _job_changed_on_disk(self):
+        return (STATE_FILE.exists()
+                and STATE_FILE.stat().st_mtime > getattr(self, "_job_mtime", 0))
 
     def _save_job(self):
         RUN.mkdir(exist_ok=True)
         STATE_FILE.write_text(json.dumps(self.job, indent=2))
+        self._job_mtime = STATE_FILE.stat().st_mtime
         self.last_save = time.time()
 
     # ---------- derived ----------
@@ -167,8 +177,9 @@ class Controller(threading.Thread):
             self.wake.wait(self.poll_secs)
             forced = self.wake.is_set()
             self.wake.clear()
+            if self._job_changed_on_disk():
+                self._load_job()  # scripts/launch.py rewrote state.json
             if not self.job.get("instance_id"):
-                self._load_job()
                 continue
             try:
                 inst = vast.show_instance(self.job["instance_id"])
